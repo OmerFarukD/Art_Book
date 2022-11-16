@@ -3,8 +3,11 @@ package com.qubitfaruk.art_book
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.sqlite.SQLiteDatabase
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
+import android.opengl.Visibility
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -16,6 +19,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.decodeBitmap
+import androidx.core.view.ContentInfoCompat
 import com.google.android.material.snackbar.Snackbar
 import com.qubitfaruk.art_book.databinding.ActivityArtBinding
 import com.qubitfaruk.art_book.databinding.ActivityMainBinding
@@ -25,6 +29,7 @@ class ArtActivity : AppCompatActivity() {
     private lateinit var binding:ActivityArtBinding
     private lateinit var activityResultLauncher: ActivityResultLauncher<Intent>
     private lateinit var permissionResultLauncher: ActivityResultLauncher<String>
+    private lateinit var database:SQLiteDatabase
     var selectedBitmap : Bitmap?=null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -33,6 +38,38 @@ class ArtActivity : AppCompatActivity() {
         val view = binding.root
         setContentView(view)
         registerLauncher()
+
+        database=this.openOrCreateDatabase("Arts", MODE_PRIVATE,null)
+
+        val intent=intent
+        val info=intent.getStringExtra("info")
+        if (info.equals("new")){
+            binding.artName.setText(" ")
+            binding.artistName.setText("")
+            binding.year.setText("")
+            binding.button3.visibility=View.VISIBLE
+            binding.imageView.setImageResource(R.drawable.asd)
+        }else{
+            binding.button3.visibility=View.INVISIBLE
+            val selectedId=intent.getIntExtra("id",1)
+            val cursor=database.rawQuery("SELECT * FROM arts WHERE id= ? ", arrayOf(selectedId.toString()))
+
+            val artName=cursor.getColumnIndex("artName")
+            val artistName=cursor.getColumnIndex("artistName")
+            val year=cursor.getColumnIndex("year")
+            val image=cursor.getColumnIndex("image")
+
+            while (cursor.moveToNext()){
+                binding.artName.setText(cursor.getString(artName))
+                binding.artistName.setText(cursor.getString(artistName))
+                binding.year.setText(cursor.getString(year))
+
+                val byteArray=cursor.getBlob(image)
+                val bitmap=BitmapFactory.decodeByteArray(byteArray,0,byteArray.size)
+                binding.imageView.setImageBitmap(bitmap)
+            }
+            cursor.close()
+        }
     }
 
     private fun makeSmallerBitmap(image: Bitmap,maximumSize:Int):Bitmap{
@@ -65,7 +102,27 @@ class ArtActivity : AppCompatActivity() {
             val outputStream=ByteArrayOutputStream()
             smallBitmap.compress(Bitmap.CompressFormat.PNG,50,outputStream)
             val byteArray=outputStream.toByteArray()
+
+            try{
+                database.execSQL("CREATE TABLE IF NOT EXISTS arts" +
+                        " (id INTEGER PRIMARY KEY, artName VARCHAR, artistName VARCHAR,year VARCHAR, image BLOB)")
+                val sqlString="INSERT INTO arts (artName,artistName,year,image) VALUES (?,?,?,?)"
+                val statement=database.compileStatement(sqlString)
+                statement.bindString(1,artName)
+                statement.bindString(2,artistName)
+                statement.bindString(3,year)
+                statement.bindBlob(4,byteArray)
+                statement.execute()
+           }catch (e :Exception){
+                e.printStackTrace()
+            }
+
+            val intent =Intent(this@ArtActivity, MainActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            startActivity(intent)
+
         }
+
 
     }
 
